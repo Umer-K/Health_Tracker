@@ -356,7 +356,7 @@ def display_table(df, columns):
         st.info("No data to display.")
         return
 
-    html = df[available_columns].to_html(index=False, border=0)
+    html = df[available_columns].to_html(index=False, border=0, escape=False)
     st.write(html, unsafe_allow_html=True)
 
 # ============================================================================
@@ -370,22 +370,29 @@ def plot_calories_trend(df):
         st.warning("No data available for chart.")
         return
 
-    df_sorted = df.sort_values('date').copy()
-    df_sorted['calories_numeric'] = df_sorted['calories'].apply(
-        parse_calorie_value)
-    daily_calories = df_sorted.groupby(
-        'date')['calories_numeric'].sum().reset_index()
+    try:
+        df_sorted = df.sort_values('date').copy()
+        df_sorted['calories_numeric'] = df_sorted['calories'].apply(
+            parse_calorie_value)
+        daily_calories = df_sorted.groupby(
+            'date')['calories_numeric'].sum().reset_index()
 
-    fig = px.line(
-        daily_calories,
-        x='date',
-        y='calories_numeric',
-        title='Daily Calorie Intake',
-        labels={'date': 'Date', 'calories_numeric': 'Calories'},
-        markers=True
-    )
-    fig.update_layout(hovermode='x unified')
-    st.plotly_chart(fig, use_container_width=True)
+        if daily_calories.empty or len(daily_calories) == 0:
+            st.warning("No calorie data to plot.")
+            return
+
+        fig = px.line(
+            daily_calories,
+            x='date',
+            y='calories_numeric',
+            title='Daily Calorie Intake',
+            labels={'date': 'Date', 'calories_numeric': 'Calories'},
+            markers=True
+        )
+        fig.update_layout(hovermode='x unified', showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error creating calorie trend chart: {str(e)}")
 
 
 def plot_macros_breakdown(df):
@@ -394,17 +401,25 @@ def plot_macros_breakdown(df):
         st.warning("No data available for chart.")
         return
 
-    macros = calculate_macros(df)
+    try:
+        macros = calculate_macros(df)
 
-    fig = go.Figure(data=[
-        go.Pie(
-            labels=['Protein', 'Fat', 'Carbs'],
-            values=[macros['total_protein'],
-                    macros['total_fat'], macros['total_carbs']],
-            title='Total Macronutrients (grams)'
-        )
-    ])
-    st.plotly_chart(fig, use_container_width=True)
+        if macros['total_protein'] == 0 and macros['total_fat'] == 0 and macros['total_carbs'] == 0:
+            st.warning("No macronutrient data to plot.")
+            return
+
+        fig = go.Figure(data=[
+            go.Pie(
+                labels=['Protein', 'Fat', 'Carbs'],
+                values=[macros['total_protein'],
+                        macros['total_fat'], macros['total_carbs']],
+                hole=0.3
+            )
+        ])
+        fig.update_layout(title='Total Macronutrients (grams)')
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error creating macros breakdown chart: {str(e)}")
 
 
 def plot_daily_macros(df):
@@ -413,28 +428,52 @@ def plot_daily_macros(df):
         st.warning("No data available for chart.")
         return
 
-    df_sorted = df.sort_values('date').copy()
-    daily_macros = df_sorted.groupby('date').agg({
-        'protein': lambda x: safe_sum(x),
-        'fat': lambda x: safe_sum(x),
-        'carbs': lambda x: safe_sum(x)
-    }).reset_index()
+    try:
+        df_sorted = df.sort_values('date').copy()
+        daily_macros = df_sorted.groupby('date').agg({
+            'protein': lambda x: safe_sum(x),
+            'fat': lambda x: safe_sum(x),
+            'carbs': lambda x: safe_sum(x)
+        }).reset_index()
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=daily_macros['date'], y=daily_macros['protein'], name='Protein (g)', mode='lines+markers'))
-    fig.add_trace(go.Scatter(
-        x=daily_macros['date'], y=daily_macros['fat'], name='Fat (g)', mode='lines+markers'))
-    fig.add_trace(go.Scatter(
-        x=daily_macros['date'], y=daily_macros['carbs'], name='Carbs (g)', mode='lines+markers'))
+        if daily_macros.empty or len(daily_macros) == 0:
+            st.warning("No macro data to plot.")
+            return
 
-    fig.update_layout(
-        title='Daily Macronutrients Trend',
-        xaxis_title='Date',
-        yaxis_title='Grams',
-        hovermode='x unified'
-    )
-    st.plotly_chart(fig, use_container_width=True)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=daily_macros['date'],
+            y=daily_macros['protein'],
+            name='Protein (g)',
+            mode='lines+markers',
+            line=dict(color='#FF6B6B')
+        ))
+        fig.add_trace(go.Scatter(
+            x=daily_macros['date'],
+            y=daily_macros['fat'],
+            name='Fat (g)',
+            mode='lines+markers',
+            line=dict(color='#4ECDC4')
+        ))
+        fig.add_trace(go.Scatter(
+            x=daily_macros['date'],
+            y=daily_macros['carbs'],
+            name='Carbs (g)',
+            mode='lines+markers',
+            line=dict(color='#FFD93D')
+        ))
+
+        fig.update_layout(
+            title='Daily Macronutrients Trend',
+            xaxis_title='Date',
+            yaxis_title='Grams',
+            hovermode='x unified',
+            legend=dict(orientation="h", yanchor="bottom",
+                        y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error creating daily macros chart: {str(e)}")
 
 # ============================================================================
 # STREAMLIT UI - MAIN FUNCTION
@@ -624,8 +663,8 @@ def main():
                 molybdenum = st.number_input(
                     "Molybdenum (mcg)", min_value=0.0, step=0.1, value=0.0, key="add_molybdenum")
 
-            ash = st.number_input(
-                "Ash (g)", min_value=0.0, step=0.1, value=0.0, key="add_ash")
+            ash = st.number_input("Ash (g)", min_value=0.0,
+                                  step=0.1, value=0.0, key="add_ash")
 
             if st.button("💾 Save to Library", use_container_width=True, type="primary", key="save_food_btn"):
                 if food_name and calories and parse_calorie_value(calories) > 0:
@@ -673,25 +712,25 @@ def main():
                             edit_calories = st.text_input("Calories (kcal)", value=str(
                                 food_data['calories']), key="edit_calories")
                         with ecol2:
-                            edit_protein = st.number_input(
-                                "Protein (g)", min_value=0.0, step=0.1, value=safe_float(food_data['protein']), key="edit_protein")
+                            edit_protein = st.number_input("Protein (g)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['protein']), key="edit_protein")
                         with ecol3:
-                            edit_fat = st.number_input(
-                                "Fat (g)", min_value=0.0, step=0.1, value=safe_float(food_data['fat']), key="edit_fat")
+                            edit_fat = st.number_input("Fat (g)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['fat']), key="edit_fat")
                         with ecol4:
-                            edit_saturated_fat = st.number_input(
-                                "Saturated Fat (g)", min_value=0.0, step=0.1, value=safe_float(food_data['saturated_fat']), key="edit_sat_fat")
+                            edit_saturated_fat = st.number_input("Saturated Fat (g)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['saturated_fat']), key="edit_sat_fat")
 
                         ecol5, ecol6, ecol7, ecol8 = st.columns(4)
                         with ecol5:
-                            edit_carbs = st.number_input(
-                                "Carbs (g)", min_value=0.0, step=0.1, value=safe_float(food_data['carbs']), key="edit_carbs")
+                            edit_carbs = st.number_input("Carbs (g)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['carbs']), key="edit_carbs")
                         with ecol6:
-                            edit_fiber = st.number_input(
-                                "Fiber (g)", min_value=0.0, step=0.1, value=safe_float(food_data['fiber']), key="edit_fiber")
+                            edit_fiber = st.number_input("Fiber (g)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['fiber']), key="edit_fiber")
                         with ecol7:
-                            edit_sugar = st.number_input(
-                                "Sugar (g)", min_value=0.0, step=0.1, value=safe_float(food_data['sugar']), key="edit_sugar")
+                            edit_sugar = st.number_input("Sugar (g)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['sugar']), key="edit_sugar")
                         with ecol8:
                             edit_omega_3 = st.number_input(
                                 "Omega-3 (g)", min_value=0.0, step=0.1, value=safe_float(food_data['omega_3']), key="edit_omega3")
@@ -699,106 +738,106 @@ def main():
                         st.write("### 🧂 Minerals")
                         ecol9, ecol10, ecol11, ecol12 = st.columns(4)
                         with ecol9:
-                            edit_sodium = st.number_input(
-                                "Sodium (mg)", min_value=0.0, step=1.0, value=safe_float(food_data['sodium']), key="edit_sodium")
+                            edit_sodium = st.number_input("Sodium (mg)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['sodium']), key="edit_sodium")
                         with ecol10:
-                            edit_potassium = st.number_input(
-                                "Potassium (mg)", min_value=0.0, step=1.0, value=safe_float(food_data['potassium']), key="edit_potassium")
+                            edit_potassium = st.number_input("Potassium (mg)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['potassium']), key="edit_potassium")
                         with ecol11:
-                            edit_calcium = st.number_input(
-                                "Calcium (mg)", min_value=0.0, step=1.0, value=safe_float(food_data['calcium']), key="edit_calcium")
+                            edit_calcium = st.number_input("Calcium (mg)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['calcium']), key="edit_calcium")
                         with ecol12:
-                            edit_magnesium = st.number_input(
-                                "Magnesium (mg)", min_value=0.0, step=1.0, value=safe_float(food_data['magnesium']), key="edit_magnesium")
+                            edit_magnesium = st.number_input("Magnesium (mg)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['magnesium']), key="edit_magnesium")
 
                         ecol13, ecol14, ecol15, ecol16 = st.columns(4)
                         with ecol13:
-                            edit_phosphorus = st.number_input(
-                                "Phosphorus (mg)", min_value=0.0, step=1.0, value=safe_float(food_data['phosphorus']), key="edit_phosphorus")
+                            edit_phosphorus = st.number_input("Phosphorus (mg)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['phosphorus']), key="edit_phosphorus")
                         with ecol14:
-                            edit_iron = st.number_input(
-                                "Iron (mg)", min_value=0.0, step=0.1, value=safe_float(food_data['iron']), key="edit_iron")
+                            edit_iron = st.number_input("Iron (mg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['iron']), key="edit_iron")
                         with ecol15:
-                            edit_zinc = st.number_input(
-                                "Zinc (mg)", min_value=0.0, step=0.1, value=safe_float(food_data['zinc']), key="edit_zinc")
+                            edit_zinc = st.number_input("Zinc (mg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['zinc']), key="edit_zinc")
                         with ecol16:
-                            edit_copper = st.number_input(
-                                "Copper (mg)", min_value=0.0, step=0.1, value=safe_float(food_data['copper']), key="edit_copper")
+                            edit_copper = st.number_input("Copper (mg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['copper']), key="edit_copper")
 
                         ecol17, ecol18, ecol19, ecol20 = st.columns(4)
                         with ecol17:
-                            edit_manganese = st.number_input(
-                                "Manganese (mg)", min_value=0.0, step=0.1, value=safe_float(food_data['manganese']), key="edit_manganese")
+                            edit_manganese = st.number_input("Manganese (mg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['manganese']), key="edit_manganese")
                         with ecol18:
-                            edit_selenium = st.number_input(
-                                "Selenium (mcg)", min_value=0.0, step=0.1, value=safe_float(food_data['selenium']), key="edit_selenium")
+                            edit_selenium = st.number_input("Selenium (mcg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['selenium']), key="edit_selenium")
                         with ecol19:
-                            edit_iodine = st.number_input(
-                                "Iodine (mcg)", min_value=0.0, step=0.1, value=safe_float(food_data['iodine']), key="edit_iodine")
+                            edit_iodine = st.number_input("Iodine (mcg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['iodine']), key="edit_iodine")
                         with ecol20:
-                            edit_chromium = st.number_input(
-                                "Chromium (mcg)", min_value=0.0, step=0.1, value=safe_float(food_data['chromium']), key="edit_chromium")
+                            edit_chromium = st.number_input("Chromium (mcg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['chromium']), key="edit_chromium")
 
                         st.write("### 💊 Vitamins")
                         ecol21, ecol22, ecol23, ecol24 = st.columns(4)
                         with ecol21:
-                            edit_vitamin_a = st.number_input(
-                                "Vitamin A (IU)", min_value=0.0, step=1.0, value=safe_float(food_data['vitamin_a']), key="edit_vita")
+                            edit_vitamin_a = st.number_input("Vitamin A (IU)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['vitamin_a']), key="edit_vita")
                         with ecol22:
-                            edit_vitamin_b1 = st.number_input(
-                                "Vitamin B1 (mg)", min_value=0.0, step=0.01, value=safe_float(food_data['vitamin_b1']), key="edit_vitb1")
+                            edit_vitamin_b1 = st.number_input("Vitamin B1 (mg)", min_value=0.0, step=0.01, value=safe_float(
+                                food_data['vitamin_b1']), key="edit_vitb1")
                         with ecol23:
-                            edit_vitamin_b2 = st.number_input(
-                                "Vitamin B2 (mg)", min_value=0.0, step=0.01, value=safe_float(food_data['vitamin_b2']), key="edit_vitb2")
+                            edit_vitamin_b2 = st.number_input("Vitamin B2 (mg)", min_value=0.0, step=0.01, value=safe_float(
+                                food_data['vitamin_b2']), key="edit_vitb2")
                         with ecol24:
-                            edit_vitamin_b3 = st.number_input(
-                                "Vitamin B3 (mg)", min_value=0.0, step=0.01, value=safe_float(food_data['vitamin_b3']), key="edit_vitb3")
+                            edit_vitamin_b3 = st.number_input("Vitamin B3 (mg)", min_value=0.0, step=0.01, value=safe_float(
+                                food_data['vitamin_b3']), key="edit_vitb3")
 
                         ecol25, ecol26, ecol27, ecol28 = st.columns(4)
                         with ecol25:
-                            edit_vitamin_b5 = st.number_input(
-                                "Vitamin B5 (mg)", min_value=0.0, step=0.01, value=safe_float(food_data['vitamin_b5']), key="edit_vitb5")
+                            edit_vitamin_b5 = st.number_input("Vitamin B5 (mg)", min_value=0.0, step=0.01, value=safe_float(
+                                food_data['vitamin_b5']), key="edit_vitb5")
                         with ecol26:
-                            edit_vitamin_b6 = st.number_input(
-                                "Vitamin B6 (mg)", min_value=0.0, step=0.01, value=safe_float(food_data['vitamin_b6']), key="edit_vitb6")
+                            edit_vitamin_b6 = st.number_input("Vitamin B6 (mg)", min_value=0.0, step=0.01, value=safe_float(
+                                food_data['vitamin_b6']), key="edit_vitb6")
                         with ecol27:
-                            edit_vitamin_b12 = st.number_input(
-                                "Vitamin B12 (mcg)", min_value=0.0, step=0.01, value=safe_float(food_data['vitamin_b12']), key="edit_vitb12")
+                            edit_vitamin_b12 = st.number_input("Vitamin B12 (mcg)", min_value=0.0, step=0.01, value=safe_float(
+                                food_data['vitamin_b12']), key="edit_vitb12")
                         with ecol28:
-                            edit_folate = st.number_input(
-                                "Folate (mcg)", min_value=0.0, step=1.0, value=safe_float(food_data['folate']), key="edit_folate")
+                            edit_folate = st.number_input("Folate (mcg)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['folate']), key="edit_folate")
 
                         ecol29, ecol30, ecol31, ecol32 = st.columns(4)
                         with ecol29:
-                            edit_vitamin_c = st.number_input(
-                                "Vitamin C (mg)", min_value=0.0, step=0.1, value=safe_float(food_data['vitamin_c']), key="edit_vitc")
+                            edit_vitamin_c = st.number_input("Vitamin C (mg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['vitamin_c']), key="edit_vitc")
                         with ecol30:
-                            edit_vitamin_d = st.number_input(
-                                "Vitamin D (IU)", min_value=0.0, step=1.0, value=safe_float(food_data['vitamin_d']), key="edit_vitd")
+                            edit_vitamin_d = st.number_input("Vitamin D (IU)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['vitamin_d']), key="edit_vitd")
                         with ecol31:
-                            edit_vitamin_e = st.number_input(
-                                "Vitamin E (mg)", min_value=0.0, step=0.1, value=safe_float(food_data['vitamin_e']), key="edit_vite")
+                            edit_vitamin_e = st.number_input("Vitamin E (mg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['vitamin_e']), key="edit_vite")
                         with ecol32:
-                            edit_vitamin_k = st.number_input(
-                                "Vitamin K (mcg)", min_value=0.0, step=0.1, value=safe_float(food_data['vitamin_k']), key="edit_vitk")
+                            edit_vitamin_k = st.number_input("Vitamin K (mcg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['vitamin_k']), key="edit_vitk")
 
                         st.write("### 💧 Other")
                         ecol33, ecol34, ecol35, ecol36 = st.columns(4)
                         with ecol33:
-                            edit_cholesterol = st.number_input(
-                                "Cholesterol (mg)", min_value=0.0, step=1.0, value=safe_float(food_data['cholesterol']), key="edit_cholesterol")
+                            edit_cholesterol = st.number_input("Cholesterol (mg)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['cholesterol']), key="edit_cholesterol")
                         with ecol34:
                             edit_omega_6 = st.number_input(
                                 "Omega-6 (g)", min_value=0.0, step=0.1, value=safe_float(food_data['omega_6']), key="edit_omega6")
                         with ecol35:
-                            edit_water = st.number_input(
-                                "Water (g)", min_value=0.0, step=1.0, value=safe_float(food_data['water']), key="edit_water")
+                            edit_water = st.number_input("Water (g)", min_value=0.0, step=1.0, value=safe_float(
+                                food_data['water']), key="edit_water")
                         with ecol36:
-                            edit_molybdenum = st.number_input(
-                                "Molybdenum (mcg)", min_value=0.0, step=0.1, value=safe_float(food_data['molybdenum']), key="edit_molybdenum")
+                            edit_molybdenum = st.number_input("Molybdenum (mcg)", min_value=0.0, step=0.1, value=safe_float(
+                                food_data['molybdenum']), key="edit_molybdenum")
 
-                        edit_ash = st.number_input(
-                            "Ash (g)", min_value=0.0, step=0.1, value=safe_float(food_data['ash']), key="edit_ash")
+                        edit_ash = st.number_input("Ash (g)", min_value=0.0, step=0.1, value=safe_float(
+                            food_data['ash']), key="edit_ash")
 
                         if st.button("💾 Update Food", use_container_width=True, type="primary", key="update_food_btn"):
                             if edit_food_name and edit_calories and parse_calorie_value(edit_calories) > 0:
@@ -846,7 +885,7 @@ def main():
             else:
                 st.info("No foods in library yet!")
 
-    # ========== LOG MEAL PAGE ==========
+    # ========== LOG MEAL PAGES ==========
     elif page in ["Today's Log", "Last 7 Days", "Last 15 Days", "Last 30 Days"]:
         st.header(title)
 
@@ -854,8 +893,8 @@ def main():
         macros = calculate_macros(meals_df)
 
         st.subheader("➕ Quick Add Meal")
-
-        st.info("💡 **Tip:** You can select ANY date below - including past dates you forgot to log! Click the date field to open the calendar.")
+        st.info(
+            "💡 **Tip:** You can select ANY date below - including past dates you forgot to log!")
 
         foods_df = get_all_foods()
 
@@ -873,9 +912,8 @@ def main():
 
             with col2:
                 meal_date = st.date_input(
-                    "📅 Date (Click to change!)",
+                    "📅 Date",
                     value=today,
-                    help="Click here to select any past date - like Nov 11th or any other day you forgot to log!",
                     key='meal_date_picker'
                 )
 
@@ -1001,19 +1039,17 @@ def main():
                         ""
                     )
                     st.success(
-                        f"✅ Logged {portion_multiplier}x {food_row['food_name']} on {meal_date.isoformat()} at {meal_time.strftime('%H:%M')}!")
+                        f"✅ Logged {portion_multiplier}x {food_row['food_name']}!")
                     st.rerun()
                 else:
                     st.error("Please enter a valid quantity!")
 
-            # ChatGPT Analysis Logic
             if analyze_meal_btn:
                 if selected_food_id and portion_multiplier > 0:
                     food_row = foods_df[foods_df['id']
                                         == selected_food_id].iloc[0]
                     food_name = food_row['food_name']
 
-                    # Calculate multiplied nutrition values
                     meal_cals = parse_calorie_value(
                         food_row['calories']) * portion_multiplier
                     meal_protein = safe_float(food_row.get(
@@ -1029,7 +1065,6 @@ def main():
                     meal_sodium = safe_float(food_row.get(
                         'sodium', 0)) * portion_multiplier
 
-                    # Get today's totals
                     try:
                         today_str = meal_date.isoformat()
                         conn = get_db_connection()
@@ -1060,7 +1095,6 @@ def main():
                         total_protein = total_fat = total_carbs = total_fiber = 0
                         total_sodium = total_sugar = 0
 
-                    # Calculate new totals after this meal
                     new_total_cals = total_cals_today + meal_cals
                     new_total_protein = total_protein + meal_protein
                     new_total_fat = total_fat + meal_fat
@@ -1069,7 +1103,6 @@ def main():
                     new_total_sodium = total_sodium + meal_sodium
                     new_total_sugar = total_sugar + meal_sugar
 
-                    # Build compact prompt
                     if meal_count > 0:
                         prompt = f"""Analyze this meal for my health goals (1600 kcal/day target):
 
@@ -1082,97 +1115,53 @@ Fiber: {meal_fiber:.1f}g | Sugar: {meal_sugar:.1f}g | Sodium: {meal_sodium:.0f}m
 TODAY SO FAR ({meal_count} meals logged): {total_cals_today:.0f} kcal
 
 AFTER EATING THIS:
-Total Calories: {new_total_cals:.0f}/1600 kcal {"🚨 OVER LIMIT!" if new_total_cals > 1800 else "✅ Good" if new_total_cals <= 1600 else "⚠️ Close to limit"}
+Total Calories: {new_total_cals:.0f}/1600 kcal
 Protein: {new_total_protein:.1f}g | Fat: {new_total_fat:.1f}g | Carbs: {new_total_carbs:.1f}g
-Fiber: {new_total_fiber:.1f}g {"⚠️ Low" if new_total_fiber < 25 else "✅"} | Sugar: {new_total_sugar:.1f}g {"⚠️ High" if new_total_sugar > 25 else "✅"}
-Sodium: {new_total_sodium:.0f}mg {"🚨 Too high!" if new_total_sodium > 2000 else "✅"}
+Fiber: {new_total_fiber:.1f}g | Sugar: {new_total_sugar:.1f}g | Sodium: {new_total_sodium:.0f}mg
 
-Answer these:
-1. Should I eat this {food_name} now? Give me a clear YES/NO with reasoning.
-2. Is the {portion_multiplier}x portion size appropriate or should I reduce it?
-3. What specific nutrients am I lacking today that I need in my next meal?
-4. Recommend ONE Pakistani dish for dinner that would perfectly balance my macros.
-5. Any immediate health risks from eating this based on my sodium/sugar levels?"""
+Answer:
+1. Should I eat this now? YES/NO with reasoning.
+2. Is the portion size appropriate?
+3. What nutrients am I lacking today?
+4. Recommend ONE Pakistani dish for dinner to balance macros.
+5. Any health risks?"""
                     else:
-                        prompt = f"""This is my FIRST meal today. Analyze it:
+                        prompt = f"""This is my FIRST meal today:
 
 MEAL: {food_name} ({portion_multiplier}x serving)
-Calories: {meal_cals:.0f} kcal (Daily Target: 1600 kcal)
+Calories: {meal_cals:.0f} kcal (Target: 1600 kcal)
 Protein: {meal_protein:.1f}g | Fat: {meal_fat:.1f}g | Carbs: {meal_carbs:.1f}g
 Fiber: {meal_fiber:.1f}g | Sugar: {meal_sugar:.1f}g | Sodium: {meal_sodium:.0f}mg
 
-Answer these:
-1. Is this a healthy first meal? Should I eat the full {portion_multiplier}x portion or reduce it?
-2. This meal is {(meal_cals/1600*100):.1f}% of my daily calories. Is that too much for breakfast?
-3. I have {1600-meal_cals:.0f} calories left. Suggest a simple lunch and dinner combo (Pakistani foods).
-4. What nutrients am I missing from this meal that I MUST get in lunch/dinner?
-5. Red flags: any health concerns with this meal's sodium/sugar/fat content?"""
+Answer:
+1. Is this healthy for first meal?
+2. This is {(meal_cals/1600*100):.1f}% of daily calories. Too much?
+3. I have {1600-meal_cals:.0f} calories left. Suggest lunch and dinner.
+4. What nutrients am I missing?
+5. Any health concerns?"""
 
-                    # Create ChatGPT URLs
                     import urllib.parse
                     encoded_prompt = urllib.parse.quote(prompt)
                     chatgpt_url_new = f"https://chat.openai.com/?q={encoded_prompt}"
                     chatgpt_url_existing = "https://chatgpt.com/c/691863ca-6930-8322-b1cf-447ba8f4d793"
 
-                    st.success(
-                        "🎯 Analysis ready! Choose how to get your answer:")
+                    st.success("🎯 Analysis ready!")
 
                     col_gpt1, col_gpt2 = st.columns(2)
 
                     with col_gpt1:
-                        st.markdown(f"""
-                        <a href="{chatgpt_url_new}" target="_blank">
-                            <button style="
-                                background-color: #10a37f;
-                                color: white;
-                                padding: 16px 20px;
-                                font-size: 16px;
-                                font-weight: bold;
-                                border: none;
-                                border-radius: 8px;
-                                cursor: pointer;
-                                width: 100%;
-                                margin: 10px 0;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                            ">
-                                🆕 New Chat (Auto-filled)
-                            </button>
-                        </a>
-                        """, unsafe_allow_html=True)
-                        st.caption("✨ Instant - prompt already entered!")
+                        st.markdown(f'<a href="{chatgpt_url_new}" target="_blank"><button style="background-color:#10a37f;color:white;padding:16px;font-size:16px;font-weight:bold;border:none;border-radius:8px;cursor:pointer;width:100%">🆕 New Chat</button></a>', unsafe_allow_html=True)
 
                     with col_gpt2:
-                        st.markdown(f"""
-                        <a href="{chatgpt_url_existing}" target="_blank">
-                            <button style="
-                                background-color: #7c3aed;
-                                color: white;
-                                padding: 16px 20px;
-                                font-size: 16px;
-                                font-weight: bold;
-                                border: none;
-                                border-radius: 8px;
-                                cursor: pointer;
-                                width: 100%;
-                                margin: 10px 0;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                            ">
-                                💬 My Health Coach
-                            </button>
-                        </a>
-                        """, unsafe_allow_html=True)
-                        st.caption("📋 Copy prompt below & paste")
+                        st.markdown(f'<a href="{chatgpt_url_existing}" target="_blank"><button style="background-color:#7c3aed;color:white;padding:16px;font-size:16px;font-weight:bold;border:none;border-radius:8px;cursor:pointer;width:100%">💬 My Health Coach</button></a>', unsafe_allow_html=True)
 
-                    with st.expander("📋 Copy Prompt (for My Health Coach conversation)"):
+                    with st.expander("📋 Copy Prompt"):
                         st.text_area("Prompt:", prompt,
                                      height=300, key="manual_prompt")
-                        st.info(
-                            "💡 Click 'My Health Coach' button above, then paste this prompt there.")
                 else:
-                    st.warning(
-                        "Please select a food and enter quantity to analyze!")
+                    st.warning("Please select a food and quantity!")
         else:
-            st.warning("Please add foods to the Food Library first!")
+            st.warning("Add foods to Food Library first!")
 
         st.write("---")
         st.subheader("📚 Logged Meals")
@@ -1184,93 +1173,215 @@ Answer these:
             col3.metric("Total Fat", f"{macros['total_fat']:.1f}g")
             col4.metric("Total Carbs", f"{macros['total_carbs']:.1f}g")
 
+            if page != "Today's Log":
+                st.write("---")
+                st.subheader("📈 Nutrition Trends")
+
+                viz_tab1, viz_tab2, viz_tab3 = st.tabs(
+                    ["Calorie Trend", "Macro Breakdown", "Daily Macros"])
+
+                with viz_tab1:
+                    plot_calories_trend(meals_df)
+
+                with viz_tab2:
+                    plot_macros_breakdown(meals_df)
+
+                with viz_tab3:
+                    plot_daily_macros(meals_df)
+
             st.write("---")
             st.subheader("📊 Detailed Nutrition Breakdown")
+
+            targets = {
+                'calories': 1600, 'protein': 110, 'fat': 45, 'saturated_fat': 15,
+                'carbs': 160, 'fiber': 30, 'sugar': 20, 'omega_3': 1.2, 'omega_6': 7,
+                'sodium': 1800, 'potassium': 3500, 'calcium': 1000, 'magnesium': 350,
+                'phosphorus': 800, 'iron': 12, 'zinc': 12, 'copper': 1, 'manganese': 2.5,
+                'selenium': 55, 'iodine': 150, 'chromium': 35, 'molybdenum': 45,
+                'vitamin_a': 900, 'vitamin_b1': 1.2, 'vitamin_b2': 1.3, 'vitamin_b3': 16,
+                'vitamin_b5': 5, 'vitamin_b6': 1.5, 'vitamin_b12': 2.4, 'folate': 400,
+                'vitamin_c': 90, 'vitamin_d': 600, 'vitamin_e': 15, 'vitamin_k': 120,
+                'cholesterol': 250
+            }
+
+            def get_status(actual, target, nutrient_type='normal'):
+                tolerance = 0.15
+                if nutrient_type == 'limit':
+                    if actual <= target * 0.8:
+                        return "✅ WELL BELOW LIMIT"
+                    elif actual <= target:
+                        return "✅ OPTIMAL"
+                    elif actual <= target * 1.15:
+                        return "⚠️ APPROACHING LIMIT"
+                    else:
+                        return "🚨 LIMIT EXCEEDED"
+                else:
+                    if actual > target * 2.5:
+                        return "🚨 DANGEROUSLY HIGH"
+                    elif actual > target * 1.5:
+                        return "⚠️ TOO HIGH"
+                    elif actual >= target * (1 - tolerance) and actual <= target * 1.5:
+                        return "✅ TARGET ACHIEVED"
+                    elif actual >= target * 0.65:
+                        return "⚠️ BELOW OPTIMAL"
+                    else:
+                        return "🚨 CRITICAL LOW"
 
             col_a, col_b, col_c = st.columns(3)
 
             with col_a:
                 st.write("### 🔥 Macronutrients")
-                st.metric("Calories", f"{int(macros['total_calories'])} kcal")
-                st.metric("Protein", f"{safe_sum(meals_df['protein']):.1f} g")
-                st.metric("Fat", f"{safe_sum(meals_df['fat']):.1f} g")
-                st.metric("Saturated Fat",
-                          f"{safe_sum(meals_df['saturated_fat']):.1f} g")
-                st.metric("Carbs", f"{safe_sum(meals_df['carbs']):.1f} g")
-                st.metric("Fiber", f"{safe_sum(meals_df['fiber']):.1f} g")
-                st.metric("Sugar", f"{safe_sum(meals_df['sugar']):.1f} g")
-                st.metric("Omega-3", f"{safe_sum(meals_df['omega_3']):.1f} g")
-                st.metric("Omega-6", f"{safe_sum(meals_df['omega_6']):.1f} g")
+                cals_actual = int(macros['total_calories'])
+                st.metric("Calories", f"{cals_actual} kcal",
+                          f"{get_status(cals_actual, targets['calories'])} | Target: {targets['calories']}")
+
+                prot_actual = safe_sum(meals_df['protein'])
+                st.metric("Protein", f"{prot_actual:.1f} g",
+                          f"{get_status(prot_actual, targets['protein'])} | Target: {targets['protein']}")
+
+                fat_actual = safe_sum(meals_df['fat'])
+                st.metric("Fat", f"{fat_actual:.1f} g",
+                          f"{get_status(fat_actual, targets['fat'])} | Target: {targets['fat']}")
+
+                sat_fat_actual = safe_sum(meals_df['saturated_fat'])
+                st.metric("Saturated Fat", f"{sat_fat_actual:.1f} g",
+                          f"{get_status(sat_fat_actual, targets['saturated_fat'], 'limit')} | Limit: {targets['saturated_fat']}")
+
+                carbs_actual = safe_sum(meals_df['carbs'])
+                st.metric("Carbs", f"{carbs_actual:.1f} g",
+                          f"{get_status(carbs_actual, targets['carbs'])} | Target: {targets['carbs']}")
+
+                fiber_actual = safe_sum(meals_df['fiber'])
+                st.metric("Fiber", f"{fiber_actual:.1f} g",
+                          f"{get_status(fiber_actual, targets['fiber'])} | Target: {targets['fiber']}")
+
+                sugar_actual = safe_sum(meals_df['sugar'])
+                st.metric("Sugar", f"{sugar_actual:.1f} g",
+                          f"{get_status(sugar_actual, targets['sugar'], 'limit')} | Limit: {targets['sugar']}")
+
+                omega3_actual = safe_sum(meals_df['omega_3'])
+                st.metric("Omega-3", f"{omega3_actual:.1f} g",
+                          f"{get_status(omega3_actual, targets['omega_3'])} | Target: {targets['omega_3']}")
+
+                omega6_actual = safe_sum(meals_df['omega_6'])
+                st.metric("Omega-6", f"{omega6_actual:.1f} g",
+                          f"{get_status(omega6_actual, targets['omega_6'])} | Target: {targets['omega_6']}")
 
             with col_b:
                 st.write("### 🧂 Minerals")
-                st.metric("Sodium", f"{safe_sum(meals_df['sodium']):.0f} mg")
-                st.metric(
-                    "Potassium", f"{safe_sum(meals_df['potassium']):.0f} mg")
-                st.metric("Calcium", f"{safe_sum(meals_df['calcium']):.0f} mg")
-                st.metric(
-                    "Magnesium", f"{safe_sum(meals_df['magnesium']):.0f} mg")
-                st.metric("Phosphorus",
-                          f"{safe_sum(meals_df['phosphorus']):.0f} mg")
-                st.metric("Iron", f"{safe_sum(meals_df['iron']):.1f} mg")
-                st.metric("Zinc", f"{safe_sum(meals_df['zinc']):.1f} mg")
-                st.metric("Copper", f"{safe_sum(meals_df['copper']):.1f} mg")
-                st.metric(
-                    "Manganese", f"{safe_sum(meals_df['manganese']):.1f} mg")
-                st.metric(
-                    "Selenium", f"{safe_sum(meals_df['selenium']):.1f} mcg")
-                st.metric("Iodine", f"{safe_sum(meals_df['iodine']):.1f} mcg")
-                st.metric(
-                    "Chromium", f"{safe_sum(meals_df['chromium']):.1f} mcg")
-                st.metric("Molybdenum",
-                          f"{safe_sum(meals_df['molybdenum']):.1f} mcg")
+                sodium_actual = safe_sum(meals_df['sodium'])
+                st.metric("Sodium", f"{sodium_actual:.0f} mg",
+                          f"{get_status(sodium_actual, targets['sodium'], 'limit')} | Limit: {targets['sodium']}")
+
+                potassium_actual = safe_sum(meals_df['potassium'])
+                st.metric("Potassium", f"{potassium_actual:.0f} mg",
+                          f"{get_status(potassium_actual, targets['potassium'])} | Target: {targets['potassium']}")
+
+                calcium_actual = safe_sum(meals_df['calcium'])
+                st.metric("Calcium", f"{calcium_actual:.0f} mg",
+                          f"{get_status(calcium_actual, targets['calcium'])} | Target: {targets['calcium']}")
+
+                magnesium_actual = safe_sum(meals_df['magnesium'])
+                st.metric("Magnesium", f"{magnesium_actual:.0f} mg",
+                          f"{get_status(magnesium_actual, targets['magnesium'])} | Target: {targets['magnesium']}")
+
+                phosphorus_actual = safe_sum(meals_df['phosphorus'])
+                st.metric("Phosphorus", f"{phosphorus_actual:.0f} mg",
+                          f"{get_status(phosphorus_actual, targets['phosphorus'])} | Target: {targets['phosphorus']}")
+
+                iron_actual = safe_sum(meals_df['iron'])
+                st.metric("Iron", f"{iron_actual:.1f} mg",
+                          f"{get_status(iron_actual, targets['iron'])} | Target: {targets['iron']}")
+
+                zinc_actual = safe_sum(meals_df['zinc'])
+                st.metric("Zinc", f"{zinc_actual:.1f} mg",
+                          f"{get_status(zinc_actual, targets['zinc'])} | Target: {targets['zinc']}")
+
+                copper_actual = safe_sum(meals_df['copper'])
+                st.metric("Copper", f"{copper_actual:.1f} mg",
+                          f"{get_status(copper_actual, targets['copper'])} | Target: {targets['copper']}")
+
+                manganese_actual = safe_sum(meals_df['manganese'])
+                st.metric("Manganese", f"{manganese_actual:.1f} mg",
+                          f"{get_status(manganese_actual, targets['manganese'])} | Target: {targets['manganese']}")
+
+                selenium_actual = safe_sum(meals_df['selenium'])
+                st.metric("Selenium", f"{selenium_actual:.1f} mcg",
+                          f"{get_status(selenium_actual, targets['selenium'])} | Target: {targets['selenium']}")
+
+                iodine_actual = safe_sum(meals_df['iodine'])
+                st.metric("Iodine", f"{iodine_actual:.1f} mcg",
+                          f"{get_status(iodine_actual, targets['iodine'])} | Target: {targets['iodine']}")
+
+                chromium_actual = safe_sum(meals_df['chromium'])
+                st.metric("Chromium", f"{chromium_actual:.1f} mcg",
+                          f"{get_status(chromium_actual, targets['chromium'])} | Target: {targets['chromium']}")
+
+                molybdenum_actual = safe_sum(meals_df['molybdenum'])
+                st.metric("Molybdenum", f"{molybdenum_actual:.1f} mcg",
+                          f"{get_status(molybdenum_actual, targets['molybdenum'])} | Target: {targets['molybdenum']}")
 
             with col_c:
                 st.write("### 💊 Vitamins")
-                st.metric(
-                    "Vitamin A", f"{safe_sum(meals_df['vitamin_a']):.0f} IU")
-                st.metric("Vitamin B1",
-                          f"{safe_sum(meals_df['vitamin_b1']):.2f} mg")
-                st.metric("Vitamin B2",
-                          f"{safe_sum(meals_df['vitamin_b2']):.2f} mg")
-                st.metric("Vitamin B3",
-                          f"{safe_sum(meals_df['vitamin_b3']):.2f} mg")
-                st.metric("Vitamin B5",
-                          f"{safe_sum(meals_df['vitamin_b5']):.2f} mg")
-                st.metric("Vitamin B6",
-                          f"{safe_sum(meals_df['vitamin_b6']):.2f} mg")
-                st.metric("Vitamin B12",
-                          f"{safe_sum(meals_df['vitamin_b12']):.2f} mcg")
-                st.metric("Folate", f"{safe_sum(meals_df['folate']):.0f} mcg")
-                st.metric(
-                    "Vitamin C", f"{safe_sum(meals_df['vitamin_c']):.1f} mg")
-                st.metric(
-                    "Vitamin D", f"{safe_sum(meals_df['vitamin_d']):.0f} IU")
-                st.metric(
-                    "Vitamin E", f"{safe_sum(meals_df['vitamin_e']):.1f} mg")
-                st.metric(
-                    "Vitamin K", f"{safe_sum(meals_df['vitamin_k']):.1f} mcg")
+                vita_actual = safe_sum(meals_df['vitamin_a'])
+                st.metric("Vitamin A", f"{vita_actual:.0f} IU",
+                          f"{get_status(vita_actual, targets['vitamin_a'])} | Target: {targets['vitamin_a']}")
+
+                vitb1_actual = safe_sum(meals_df['vitamin_b1'])
+                st.metric("Vitamin B1", f"{vitb1_actual:.2f} mg",
+                          f"{get_status(vitb1_actual, targets['vitamin_b1'])} | Target: {targets['vitamin_b1']}")
+
+                vitb2_actual = safe_sum(meals_df['vitamin_b2'])
+                st.metric("Vitamin B2", f"{vitb2_actual:.2f} mg",
+                          f"{get_status(vitb2_actual, targets['vitamin_b2'])} | Target: {targets['vitamin_b2']}")
+
+                vitb3_actual = safe_sum(meals_df['vitamin_b3'])
+                st.metric("Vitamin B3", f"{vitb3_actual:.2f} mg",
+                          f"{get_status(vitb3_actual, targets['vitamin_b3'])} | Target: {targets['vitamin_b3']}")
+
+                vitb5_actual = safe_sum(meals_df['vitamin_b5'])
+                st.metric("Vitamin B5", f"{vitb5_actual:.2f} mg",
+                          f"{get_status(vitb5_actual, targets['vitamin_b5'])} | Target: {targets['vitamin_b5']}")
+
+                vitb6_actual = safe_sum(meals_df['vitamin_b6'])
+                st.metric("Vitamin B6", f"{vitb6_actual:.2f} mg",
+                          f"{get_status(vitb6_actual, targets['vitamin_b6'])} | Target: {targets['vitamin_b6']}")
+
+                vitb12_actual = safe_sum(meals_df['vitamin_b12'])
+                st.metric("Vitamin B12", f"{vitb12_actual:.2f} mcg",
+                          f"{get_status(vitb12_actual, targets['vitamin_b12'])} | Target: {targets['vitamin_b12']}")
+
+                folate_actual = safe_sum(meals_df['folate'])
+                st.metric("Folate", f"{folate_actual:.0f} mcg",
+                          f"{get_status(folate_actual, targets['folate'])} | Target: {targets['folate']}")
+
+                vitc_actual = safe_sum(meals_df['vitamin_c'])
+                st.metric("Vitamin C", f"{vitc_actual:.1f} mg",
+                          f"{get_status(vitc_actual, targets['vitamin_c'])} | Target: {targets['vitamin_c']}")
+
+                vitd_actual = safe_sum(meals_df['vitamin_d'])
+                st.metric("Vitamin D", f"{vitd_actual:.0f} IU",
+                          f"{get_status(vitd_actual, targets['vitamin_d'])} | Target: {targets['vitamin_d']}")
+
+                vite_actual = safe_sum(meals_df['vitamin_e'])
+                st.metric("Vitamin E", f"{vite_actual:.1f} mg",
+                          f"{get_status(vite_actual, targets['vitamin_e'])} | Target: {targets['vitamin_e']}")
+
+                vitk_actual = safe_sum(meals_df['vitamin_k'])
+                st.metric("Vitamin K", f"{vitk_actual:.1f} mcg",
+                          f"{get_status(vitk_actual, targets['vitamin_k'])} | Target: {targets['vitamin_k']}")
 
                 st.write("### 💧 Other")
-                st.metric("Cholesterol",
-                          f"{safe_sum(meals_df['cholesterol']):.0f} mg")
+                chol_actual = safe_sum(meals_df['cholesterol'])
+                st.metric("Cholesterol", f"{chol_actual:.0f} mg",
+                          f"{get_status(chol_actual, targets['cholesterol'], 'limit')} | Limit: {targets['cholesterol']}")
+
                 st.metric("Water", f"{safe_sum(meals_df['water']):.0f} g")
                 st.metric("Ash", f"{safe_sum(meals_df['ash']):.1f} g")
 
-            st.write("---")
-            col_c1, col_c2 = st.columns(2)
-            with col_c1:
-                plot_calories_trend(meals_df)
-            with col_c2:
-                plot_macros_breakdown(meals_df)
-
-            plot_daily_macros(meals_df)
-
-            # DAILY SUMMARY CHATGPT BUTTON
             if page == "Today's Log":
                 st.write("---")
-                if st.button("🌟 Get Daily Health Summary from ChatGPT", use_container_width=True, type="secondary", key="daily_summary_btn"):
-                    # Calculate totals
+                if st.button("🌟 Get Daily Health Summary from ChatGPT", use_container_width=True, type="secondary"):
                     df_copy = meals_df.copy()
                     df_copy['calories_numeric'] = df_copy['calories'].apply(
                         parse_calorie_value)
@@ -1283,99 +1394,51 @@ Answer these:
                     total_sodium = safe_sum(df_copy['sodium'])
                     total_sugar = safe_sum(df_copy['sugar'])
 
-                    # Build daily summary prompt
                     prompt = f"""Daily Health Report - {meal_date.isoformat()}
 
-TOTAL MEALS TODAY: {len(df_copy)}
+TOTAL MEALS: {len(df_copy)}
 
-MEALS BREAKDOWN:
+MEALS:
 """
                     for idx, meal in df_copy.iterrows():
                         meal_cals = parse_calorie_value(meal['calories'])
                         prompt += f"{idx+1}. {meal['food_name']} ({meal['portion']}) - {meal_cals:.0f} kcal\n"
 
                     prompt += f"""
-DAILY TOTALS (Target: 1600 kcal/day):
-Calories: {total_cals:.0f}/1600 kcal {"🚨 OVER!" if total_cals > 1800 else "✅ Perfect" if 1400 <= total_cals <= 1600 else "⚠️ Close"}
-Protein: {total_protein:.1f}g (Target: 78-120g)
-Fat: {total_fat:.1f}g (Target: 44-62g)
-Carbs: {total_carbs:.1f}g (Target: 175-245g)
-Fiber: {total_fiber:.1f}g (Target: 25g) {"⚠️ Need more" if total_fiber < 25 else "✅"}
-Sugar: {total_sugar:.1f}g (Limit: <25g) {"⚠️ Too much!" if total_sugar > 25 else "✅"}
-Sodium: {total_sodium:.0f}mg (Limit: <2000mg) {"🚨 Way too high!" if total_sodium > 2000 else "✅"}
+TOTALS (Target: 1600 kcal):
+Calories: {total_cals:.0f}/1600 | Protein: {total_protein:.1f}g | Fat: {total_fat:.1f}g
+Carbs: {total_carbs:.1f}g | Fiber: {total_fiber:.1f}g | Sugar: {total_sugar:.1f}g | Sodium: {total_sodium:.0f}mg
 
-Give me ACTIONABLE answers:
-1. Rate my day: A-F grade with specific reasoning for the grade.
-2. Biggest mistake today: What ONE thing hurt my health goals the most?
-3. Biggest win today: What did I do right that I should repeat?
-4. Tomorrow's plan: Give me 3 specific Pakistani meals (breakfast, lunch, dinner) with portion sizes.
-5. Health risks: Based on my sodium/sugar/fiber, what should I watch out for?
-6. One-week challenge: What ONE habit should I focus on this week to improve?"""
+Give me:
+1. Grade (A-F) with reasoning
+2. Biggest mistake today
+3. Biggest win today
+4. Tomorrow's plan (3 Pakistani meals)
+5. Health risks based on sodium/sugar/fiber
+6. One-week challenge"""
 
                     import urllib.parse
                     encoded_prompt = urllib.parse.quote(prompt)
                     chatgpt_url_new = f"https://chat.openai.com/?q={encoded_prompt}"
                     chatgpt_url_existing = "https://chatgpt.com/c/691863ca-6930-8322-b1cf-447ba8f4d793"
 
-                    st.success(
-                        "📊 Daily summary ready! Get your personalized health coach review:")
+                    st.success("📊 Daily summary ready!")
 
-                    col_daily1, col_daily2 = st.columns(2)
+                    col_d1, col_d2 = st.columns(2)
+                    with col_d1:
+                        st.markdown(f'<a href="{chatgpt_url_new}" target="_blank"><button style="background-color:#10a37f;color:white;padding:16px;font-size:16px;font-weight:bold;border:none;border-radius:8px;cursor:pointer;width:100%">🆕 New Chat</button></a>', unsafe_allow_html=True)
 
-                    with col_daily1:
-                        st.markdown(f"""
-                        <a href="{chatgpt_url_new}" target="_blank">
-                            <button style="
-                                background-color: #10a37f;
-                                color: white;
-                                padding: 16px 20px;
-                                font-size: 16px;
-                                font-weight: bold;
-                                border: none;
-                                border-radius: 8px;
-                                cursor: pointer;
-                                width: 100%;
-                                margin: 10px 0;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                            ">
-                                🆕 New Chat (Auto-filled)
-                            </button>
-                        </a>
-                        """, unsafe_allow_html=True)
-                        st.caption("✨ Instant analysis - ready to send!")
+                    with col_d2:
+                        st.markdown(f'<a href="{chatgpt_url_existing}" target="_blank"><button style="background-color:#7c3aed;color:white;padding:16px;font-size:16px;font-weight:bold;border:none;border-radius:8px;cursor:pointer;width:100%">💬 My Health Coach</button></a>', unsafe_allow_html=True)
 
-                    with col_daily2:
-                        st.markdown(f"""
-                        <a href="{chatgpt_url_existing}" target="_blank">
-                            <button style="
-                                background-color: #7c3aed;
-                                color: white;
-                                padding: 16px 20px;
-                                font-size: 16px;
-                                font-weight: bold;
-                                border: none;
-                                border-radius: 8px;
-                                cursor: pointer;
-                                width: 100%;
-                                margin: 10px 0;
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                            ">
-                                💬 My Health Coach
-                            </button>
-                        </a>
-                        """, unsafe_allow_html=True)
-                        st.caption("📋 Copy & paste for continuity")
-
-                    with st.expander("📋 Copy Prompt (for My Health Coach conversation)"):
-                        st.text_area("Daily Summary Prompt:", prompt,
+                    with st.expander("📋 Copy Prompt"):
+                        st.text_area("Daily Summary:", prompt,
                                      height=400, key="daily_manual_prompt")
-                        st.info(
-                            "💡 Click 'My Health Coach' above, then paste this prompt.")
 
             st.write("---")
             st.subheader("Detailed Log")
-            display_table(meals_df, [
-                          'id', 'date', 'time', 'food_name', 'portion', 'calories', 'protein', 'fat', 'carbs'])
+            display_table(meals_df, ['id', 'date', 'time', 'food_name',
+                          'portion', 'calories', 'protein', 'fat', 'carbs'])
 
             st.write("---")
             meal_ids = meals_df['id'].tolist()
@@ -1391,19 +1454,19 @@ Give me ACTIONABLE answers:
                     st.success(f"Meal ID {meal_to_delete} deleted!")
                     st.rerun()
         else:
-            st.info("No meals logged for this period. Add a meal above!")
+            st.info("No meals logged. Add a meal above!")
 
     # ========== SETTINGS PAGE ==========
     elif page == "Settings":
         st.header("⚙️ Settings")
 
         st.subheader("Database Management")
-        st.info("Database saved as `health_tracker.db` in your project folder")
+        st.info("Database: `health_tracker.db`")
 
         if st.button("Run Database Migration", key="migrate_db_btn"):
             try:
                 migrate_database()
-                st.success("Database migration completed!")
+                st.success("Migration completed!")
             except Exception as e:
                 st.error(f"Error: {e}")
 
