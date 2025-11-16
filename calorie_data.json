@@ -6,8 +6,9 @@
       "description": "chicken",
       "calories": 10,
       "feedback": "\u2713 Meal logged! (AI feedback unavailable: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=30))",
-      "timestamp": "2025-11-15T13:19:51.449894"
+      "timestamp": "2025-11-15T13:19:51.449894" 
     }
   ],
+  
   "daily_goal": 2000
 }
