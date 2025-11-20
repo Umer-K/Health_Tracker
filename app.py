@@ -523,8 +523,8 @@ def main():
         st.write(
             "Create & save your favorite foods with their calories & macros. Then quickly add them to your daily log!")
 
-        tab1, tab2, tab3 = st.tabs(
-            ["Add New Food", "Edit Food", "View & Manage Foods"])
+        tab1, tab2, tab3, tab4 = st.tabs(
+            ["Add New Food", "Edit Food", "View & Manage Foods", "🔥 Calorie Burn Calculator"])
 
         with tab1:
             st.subheader("➕ Add Food to Library")
@@ -884,6 +884,205 @@ def main():
                     st.rerun()
             else:
                 st.info("No foods in library yet!")
+
+        with tab4:
+            st.subheader("🔥 Calorie Burn Calculator")
+            st.info(
+                "💪 Track your exercise and burn calories! For your stats: 80kg, 21 years, 5'5\" (165cm)")
+
+            # Get today's meals for calorie calculation
+            today_str = today.isoformat()
+            conn = get_db_connection()
+            today_meals = pd.read_sql_query(
+                "SELECT * FROM meals WHERE date = ?", conn, params=(today_str,))
+            conn.close()
+
+            if not today_meals.empty:
+                today_meals['calories_numeric'] = today_meals['calories'].apply(
+                    parse_calorie_value)
+                total_calories_eaten = today_meals['calories_numeric'].sum()
+            else:
+                total_calories_eaten = 0
+
+            # Display current calorie status
+            col_cal1, col_cal2, col_cal3 = st.columns(3)
+            with col_cal1:
+                st.metric("🍽️ Calories Eaten Today",
+                          f"{int(total_calories_eaten)} kcal")
+            with col_cal2:
+                st.metric("🎯 Daily Target", "1600 kcal")
+            with col_cal3:
+                remaining = 1600 - total_calories_eaten
+                st.metric("📊 Remaining", f"{int(remaining)} kcal",
+                          delta=f"{int(remaining)} kcal",
+                          delta_color="inverse" if remaining < 0 else "normal")
+
+            st.write("---")
+
+            # Exercise Calculator
+            st.write("### 💪 Exercise Activities")
+
+            # Accurate calorie burn rates for 80kg, 21 years, 5'5" person
+            exercise_data = {
+                "🚶 Walking (Slow Pace)": {"cal_per_min": 4.5, "unit": "minutes"},
+                "🚶‍♂️ Walking (Moderate Pace)": {"cal_per_min": 5.5, "unit": "minutes"},
+                "🏃 Walking (Fast Pace)": {"cal_per_min": 6.8, "unit": "minutes"},
+                "🏃‍♂️ Jogging (Light)": {"cal_per_min": 8.5, "unit": "minutes"},
+                "🏃‍♂️ Running (Moderate)": {"cal_per_min": 11.5, "unit": "minutes"},
+                "🏃‍♂️ Running (Fast)": {"cal_per_min": 14.5, "unit": "minutes"},
+                "💪 Push-ups": {"cal_per_rep": 0.45, "unit": "reps"},
+                "🦵 Squats": {"cal_per_rep": 0.38, "unit": "reps"},
+                "🏋️ Lunges": {"cal_per_rep": 0.42, "unit": "reps"},
+                "🧘 Plank (Hold)": {"cal_per_min": 3.2, "unit": "minutes"},
+                "🚴 Cycling (Light)": {"cal_per_min": 6.5, "unit": "minutes"},
+                "🚴 Cycling (Moderate)": {"cal_per_min": 9.0, "unit": "minutes"},
+                "🚴 Cycling (Intense)": {"cal_per_min": 12.5, "unit": "minutes"},
+                "🏊 Swimming (Light)": {"cal_per_min": 7.5, "unit": "minutes"},
+                "🏊 Swimming (Moderate)": {"cal_per_min": 10.0, "unit": "minutes"},
+                "🏊 Swimming (Intense)": {"cal_per_min": 13.5, "unit": "minutes"},
+                "🧘‍♀️ Yoga": {"cal_per_min": 3.5, "unit": "minutes"},
+                "🥊 Boxing (Training)": {"cal_per_min": 11.0, "unit": "minutes"},
+                "⛹️ Basketball": {"cal_per_min": 9.5, "unit": "minutes"},
+                "⚽ Football/Soccer": {"cal_per_min": 10.0, "unit": "minutes"},
+                "🎾 Tennis": {"cal_per_min": 8.5, "unit": "minutes"},
+                "🏸 Badminton": {"cal_per_min": 7.0, "unit": "minutes"},
+                "🪜 Climbing Stairs": {"cal_per_min": 10.5, "unit": "minutes"},
+                "🧗 Rock Climbing": {"cal_per_min": 11.5, "unit": "minutes"},
+                "💃 Dancing (Moderate)": {"cal_per_min": 5.5, "unit": "minutes"},
+                "💃 Dancing (Intense)": {"cal_per_min": 8.0, "unit": "minutes"},
+                "🏋️‍♂️ Weight Training": {"cal_per_min": 6.5, "unit": "minutes"},
+                "🤸 Burpees": {"cal_per_rep": 0.75, "unit": "reps"},
+                "⬆️ Jumping Jacks": {"cal_per_rep": 0.25, "unit": "reps"},
+                "🦘 Jump Rope (Light)": {"cal_per_min": 9.0, "unit": "minutes"},
+                "🦘 Jump Rope (Intense)": {"cal_per_min": 13.0, "unit": "minutes"},
+            }
+
+            # Exercise selection
+            selected_exercise = st.selectbox(
+                "Select Exercise:",
+                list(exercise_data.keys()),
+                key="calc_exercise_selector"
+            )
+
+            exercise_info = exercise_data[selected_exercise]
+            unit_type = exercise_info["unit"]
+
+            # Input based on unit type
+            if unit_type == "minutes":
+                cal_rate = exercise_info["cal_per_min"]
+
+                col_ex1, col_ex2 = st.columns(2)
+                with col_ex1:
+                    duration = st.number_input(
+                        "Duration (minutes):",
+                        min_value=1,
+                        max_value=300,
+                        value=30,
+                        step=1,
+                        key="calc_exercise_duration"
+                    )
+                with col_ex2:
+                    calories_burned = cal_rate * duration
+                    st.metric("🔥 Calories Burned",
+                              f"{calories_burned:.1f} kcal")
+
+                st.info(
+                    f"📊 **Rate:** {cal_rate} kcal/minute for your body stats")
+
+            else:  # reps
+                cal_rate = exercise_info["cal_per_rep"]
+
+                col_ex1, col_ex2 = st.columns(2)
+                with col_ex1:
+                    reps = st.number_input(
+                        "Number of Reps:",
+                        min_value=1,
+                        max_value=1000,
+                        value=10,
+                        step=1,
+                        key="calc_exercise_reps"
+                    )
+                with col_ex2:
+                    calories_burned = cal_rate * reps
+                    st.metric("🔥 Calories Burned",
+                              f"{calories_burned:.1f} kcal")
+
+                st.info(f"📊 **Rate:** {cal_rate} kcal/rep for your body stats")
+
+            # Show net calories
+            st.write("---")
+            st.write("### 📊 Net Calorie Balance")
+
+            net_calories = total_calories_eaten - calories_burned
+            net_remaining = 1600 - net_calories
+
+            col_net1, col_net2, col_net3, col_net4 = st.columns(4)
+            with col_net1:
+                st.metric("🍽️ Eaten", f"{int(total_calories_eaten)} kcal")
+            with col_net2:
+                st.metric("🔥 Burned", f"{int(calories_burned)} kcal",
+                          delta=f"-{int(calories_burned)} kcal")
+            with col_net3:
+                st.metric("💯 Net Intake", f"{int(net_calories)} kcal")
+            with col_net4:
+                st.metric("🎯 Target Remaining", f"{int(net_remaining)} kcal",
+                          delta=f"{int(net_remaining)} kcal",
+                          delta_color="inverse" if net_remaining < 0 else "normal")
+
+            # Visual progress bar
+            st.write("---")
+            st.write("### 📈 Daily Calorie Progress")
+
+            progress_percentage = (net_calories / 1600) * 100
+
+            # Handle negative net calories (burned more than ate)
+            if net_calories < 0:
+                st.error(
+                    f"🔥 You've burned MORE calories than you ate! Net: {int(net_calories)} kcal (Deficit: {abs(int(net_calories))} kcal)")
+                st.progress(0.0)
+            elif progress_percentage <= 100:
+                st.success(
+                    f"✅ You're at {progress_percentage:.1f}% of your daily target!")
+                st.progress(max(0.0, min(progress_percentage / 100, 1.0)))
+            else:
+                st.warning(
+                    f"⚠️ You're at {progress_percentage:.1f}% of your daily target (over by {int(net_calories - 1600)} kcal)")
+                st.progress(1.0)
+
+            # Exercise tips
+            st.write("---")
+            st.write("### 💡 Exercise Tips for Your Stats (80kg, 21 years)")
+
+            tips_col1, tips_col2 = st.columns(2)
+
+            with tips_col1:
+                st.info("""
+                **🔥 High Calorie Burners:**
+                - Running (Fast): 14.5 kcal/min
+                - Jump Rope (Intense): 13 kcal/min
+                - Swimming (Intense): 13.5 kcal/min
+                - Boxing: 11 kcal/min
+                """)
+
+            with tips_col2:
+                st.info("""
+                **💪 Strength Training:**
+                - 100 Push-ups = 45 kcal
+                - 100 Squats = 38 kcal
+                - 100 Burpees = 75 kcal
+                - 10 min Plank = 32 kcal
+                """)
+
+            st.success("""
+            **🎯 Quick Exercise Goals to Offset 500 kcal:**
+            - Walk for 111 minutes (slow pace)
+            - Run for 43 minutes (moderate pace)
+            - Do 1111 push-ups (or 10 sets of 111 throughout the day!)
+            - Cycle for 56 minutes (moderate)
+            - Swim for 50 minutes (moderate)
+            """)
+
+            st.caption("📝 **Note:** Calorie calculations are based on your specific body stats (80kg, 21 years, 165cm) and average MET values. Actual calories burned may vary based on intensity, form, and individual metabolism.")
 
     # ========== LOG MEAL PAGES ==========
     elif page in ["Today's Log", "Last 7 Days", "Last 15 Days", "Last 30 Days"]:
